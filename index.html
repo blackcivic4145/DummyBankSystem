@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DUMMY BANK | ダミー銀行 オンラインバンキング</title>
+  <meta name="description" content="ダミー銀行のオンラインバンキングサービス。残高確認・振込・定期預金の管理が簡単にできます。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="screen-login" class="screen active">
+  <div class="login-bg">
+    <div class="login-card">
+      <div class="login-logo">🏦</div>
+      <h1 class="login-title">DUMMY BANK</h1>
+      <p class="login-subtitle">ログインして口座情報を確認</p>
+      <div id="login-error" class="error-banner hidden"></div>
+      <div class="form-group">
+        <label for="login-userid">👤 ユーザーID</label>
+        <input type="text" id="login-userid" placeholder="test" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="login-password">🔒 パスワード</label>
+        <div class="password-wrapper">
+          <input type="password" id="login-password" placeholder="test" autocomplete="current-password">
+          <button class="toggle-pw" id="toggle-pw" type="button" aria-label="パスワードを表示">👁</button>
+        </div>
+      </div>
+      <button class="btn-primary full-width" id="btn-login">ログイン</button>
+      <p class="login-hint">テストアカウント: <strong>test / test</strong> または <strong>guest / guest</strong></p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MY PAGE SCREEN ===== -->
+<div id="screen-mypage" class="screen">
+  <header class="app-header">
+    <span class="header-title">マイページ</span>
+    <button class="btn-icon" id="btn-logout" title="ログアウト">🚪</button>
+  </header>
+  <div class="content-area">
+    <div id="account-card" class="bank-card"></div>
+    <div class="section-title">便利メニュー</div>
+    <div class="menu-grid">
+      <button class="menu-item" id="menu-transfer"><span class="menu-icon">💸</span><span>お振込・振替</span></button>
+      <button class="menu-item" id="menu-savings"><span class="menu-icon">📈</span><span>定期・積立</span></button>
+      <button class="menu-item" id="menu-loan"><span class="menu-icon">💳</span><span>カードローン</span></button>
+      <button class="menu-item" id="menu-settings"><span class="menu-icon">⚙️</span><span>各種お手続き</span></button>
+    </div>
+    <div class="section-title">取引履歴（最新5件）</div>
+    <div id="tx-list" class="tx-list"></div>
+  </div>
+</div>
+
+<!-- ===== TRANSFER SCREEN ===== -->
+<div id="screen-transfer" class="screen">
+  <header class="app-header">
+    <button class="btn-icon" id="btn-transfer-back">←</button>
+    <span class="header-title">お振込・振替</span>
+    <span></span>
+  </header>
+  <div class="content-area">
+    <div id="transfer-from-card" class="info-card"></div>
+    <div class="section-title">振込先情報の入力</div>
+    <div class="form-group">
+      <label>金融機関</label>
+      <select id="transfer-bank">
+        <option value="001">【001】ダミー銀行</option>
+        <option value="002">【002】サンプル銀行</option>
+        <option value="003">【003】テスト信託銀行</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="transfer-branch">支店コード（3桁）</label>
+      <input type="text" id="transfer-branch" placeholder="例: 001" maxlength="3" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label>口座種別</label>
+      <select id="transfer-actype">
+        <option>普通預金</option>
+        <option>当座預金</option>
+        <option>貯蓄預金</option>
+      </select>
+    </div>
+    <div class="row-flex">
+      <div class="form-group flex-grow">
+        <label for="transfer-acno">口座番号</label>
+        <input type="text" id="transfer-acno" placeholder="例: 0987654321" inputmode="numeric">
+      </div>
+      <button class="btn-secondary" id="btn-check-account" style="margin-top:22px;white-space:nowrap">口座確認</button>
+    </div>
+    <div id="transfer-confirmed" class="confirmed-card hidden"></div>
+    <div id="transfer-error" class="error-banner hidden"></div>
+    <div class="form-group">
+      <label for="transfer-amount">振込金額（円）</label>
+      <input type="number" id="transfer-amount" placeholder="例: 10000" min="1" disabled>
+    </div>
+    <button class="btn-primary full-width" id="btn-do-transfer" disabled>振込を実行する</button>
+  </div>
+</div>
+
+<!-- ===== SAVINGS SCREEN ===== -->
+<div id="screen-savings" class="screen">
+  <header class="app-header">
+    <button class="btn-icon" id="btn-savings-back">←</button>
+    <span class="header-title">定期・積立</span>
+    <span></span>
+  </header>
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-savings-list" data-tab="savings-list">預入一覧</button>
+    <button class="tab-btn" id="tab-savings-apply" data-tab="savings-apply">新規お申し込み</button>
+  </div>
+  <div class="content-area">
+    <!-- List Tab -->
+    <div id="savings-list" class="tab-content active">
+      <div id="savings-summary-card" class="bank-card savings-card"></div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>ご契約一覧</span>
+        <button class="btn-link" id="savings-go-apply">＋ 新規お申し込み</button>
+      </div>
+      <div id="savings-list-container"></div>
+    </div>
+    <!-- Apply Tab -->
+    <div id="savings-apply" class="tab-content">
+      <div id="savings-balance-card" class="info-card"></div>
+      <div class="section-title">お申し込み情報の入力</div>
+      <div class="form-group">
+        <label>預入種別</label>
+        <div class="type-toggle-group">
+          <button class="type-toggle-btn active" id="sv-type-fixed" data-type="FIXED">定期預金</button>
+          <button class="type-toggle-btn" id="sv-type-acc" data-type="ACCUMULATION">積立定期預金</button>
+        </div>
+      </div>
+      <div id="sv-fixed-fields">
+        <div class="form-group">
+          <label for="sv-amount">預入金額</label>
+          <div class="input-suffix"><input type="number" id="sv-amount" placeholder="例: 100000" min="1"><span>円</span></div>
+        </div>
+      </div>
+      <div id="sv-acc-fields" class="hidden">
+        <div class="form-group">
+          <label for="sv-monthly">毎月の積立額</label>
+          <div class="input-suffix"><input type="number" id="sv-monthly" placeholder="例: 10000" min="1"><span>円</span></div>
+        </div>
+        <div class="form-group">
+          <label for="sv-total">目標総金額（任意）</label>
+          <div class="input-suffix"><input type="number" id="sv-total" placeholder="例: 240000" min="1"><span>円</span></div>
+        </div>
+        <div class="form-group">
+          <label>毎月の振替指定日</label>
+          <select id="sv-day">
+            <option value="5">毎月 5 日</option>
+            <option value="10">毎月 10 日</option>
+            <option value="15">毎月 15 日</option>
+            <option value="20">毎月 20 日</option>
+            <option value="25" selected>毎月 25 日</option>
+            <option value="27">毎月 27 日</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>預入期間</label>
+        <div class="term-chips" id="term-chips">
+          <button class="chip" data-months="6">6ヶ月</button>
+          <button class="chip active" data-months="12">1年</button>
+          <button class="chip" data-months="24">2年</button>
+          <button class="chip" data-months="36">3年</button>
+          <button class="chip" data-months="60">5年</button>
+        </div>
+      </div>
+      <div class="interest-rate-card" id="interest-rate-card">
+        <span class="interest-label">📈 適用金利（年利）</span>
+        <span class="interest-value" id="interest-rate-val">0.15%</span>
+      </div>
+      <div class="form-group">
+        <label>満期時の取扱</label>
+        <select id="sv-maturity">
+          <option value="AUTO_RENEW_WITH_INTEREST">元利自動継続</option>
+          <option value="AUTO_RENEW_PRINCIPAL_ONLY">元金自動継続</option>
+          <option value="AUTO_CANCEL">自動解約（普通預金振込）</option>
+        </select>
+      </div>
+      <div id="sv-apply-error" class="error-banner hidden"></div>
+      <button class="btn-primary full-width" id="btn-sv-apply">申し込みを確定する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SETTINGS SCREEN ===== -->
+<div id="screen-settings" class="screen">
+  <header class="app-header">
+    <button class="btn-icon" id="btn-settings-back">←</button>
+    <span class="header-title" id="settings-header-title">各種お手続き</span>
+    <span></span>
+  </header>
+  <div class="content-area">
+    <!-- Portal -->
+    <div id="settings-portal">
+      <div class="section-title">セキュリティ設定</div>
+      <button class="settings-item-card" id="settings-go-2fa">
+        <div class="settings-item-left">
+          <div class="settings-icon-box">🔐</div>
+          <div>
+            <div class="settings-item-title">2段階認証（SMS認証）</div>
+            <div class="settings-item-sub" id="two-fa-status-label">未設定（SMSによる本人確認設定）</div>
+          </div>
+        </div>
+        <span class="chevron">›</span>
+      </button>
+      <div class="section-title" style="margin-top:24px">その他のお手続き（準備中）</div>
+      <button class="settings-item-card" onclick="showToast('「暗証番号変更」機能は準備中です。')">
+        <div class="settings-item-left"><div class="settings-icon-box settings-icon-gray">🔑</div><div><div class="settings-item-title">暗証番号変更</div><div class="settings-item-sub">キャッシュカード・ログイン暗証番号の変更</div></div></div><span class="chevron">›</span>
+      </button>
+      <button class="settings-item-card" onclick="showToast('「メールアドレス変更」機能は準備中です。')">
+        <div class="settings-item-left"><div class="settings-icon-box settings-icon-gray">📧</div><div><div class="settings-item-title">メールアドレス変更</div><div class="settings-item-sub">お知らせや通知用アドレスの変更</div></div></div><span class="chevron">›</span>
+      </button>
+      <button class="settings-item-card" onclick="showToast('「取引限度額変更」機能は準備中です。')">
+        <div class="settings-item-left"><div class="settings-icon-box settings-icon-gray">💱</div><div><div class="settings-item-title">取引限度額変更</div><div class="settings-item-sub">1日あたりの振込限度額の変更</div></div></div><span class="chevron">›</span>
+      </button>
+    </div>
+    <!-- 2FA Setup -->
+    <div id="settings-2fa" class="hidden">
+      <div id="2fa-enabled-view" class="hidden">
+        <div class="verify-card">
+          <div class="verify-icon">🛡️</div>
+          <h2>2段階認証は有効です</h2>
+          <p id="2fa-phone-masked"></p>
+          <p class="note">※ログイン時や振込等の重要なお手続きの際、この電話番号宛てに届くSMS認証コードの入力が必要となります。</p>
+        </div>
+        <button class="btn-danger full-width" id="btn-2fa-disable">2段階認証を解除する</button>
+      </div>
+      <div id="2fa-disabled-view">
+        <div class="info-box">ℹ️ 携帯電話番号を登録し、SMSで届く6桁の認証コードを照合することで、2段階認証を有効化できます。</div>
+        <div class="form-group" style="margin-top:16px">
+          <label>携帯電話番号の入力</label>
+          <div class="row-flex">
+            <input type="tel" id="two-fa-phone" placeholder="例: 090-1234-5678" style="flex:1">
+            <button class="btn-secondary" id="btn-send-code" style="white-space:nowrap">コード送信</button>
+          </div>
+        </div>
+        <div id="2fa-code-section" class="hidden">
+          <div class="form-group">
+            <label for="two-fa-code">認証コード（6桁）</label>
+            <input type="text" id="two-fa-code" placeholder="受信した6桁のコードを入力" maxlength="6" inputmode="numeric">
+          </div>
+          <div id="2fa-timer-text" class="timer-text"></div>
+          <div id="2fa-setup-error" class="error-banner hidden"></div>
+          <button class="btn-primary full-width" id="btn-verify-enable">認証して有効化する</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODALS ===== -->
+<!-- 2FA Transfer Dialog -->
+<div id="modal-2fa-transfer" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h2>🔐 2段階認証</h2>
+    <p style="font-size:14px;color:#666;margin-bottom:16px">ログイン中のWeb画面右下に表示された6桁の認証コードを入力してください。</p>
+    <div class="form-group">
+      <input type="text" id="modal-2fa-code" placeholder="6桁の数字" maxlength="6" inputmode="numeric">
+    </div>
+    <div id="modal-2fa-error" class="error-banner hidden" style="margin-bottom:12px"></div>
+    <div style="display:flex;gap:12px">
+      <button class="btn-secondary" style="flex:1" id="btn-2fa-cancel">キャンセル</button>
+      <button class="btn-primary" style="flex:1" id="btn-2fa-confirm">認証して振込</button>
+    </div>
+  </div>
+</div>
+<!-- Simulated SMS Dialog -->
+<div id="modal-sms" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:24px">💬</span><h2 style="margin:0">【シミュレータ】SMS受信</h2></div>
+    <p style="font-size:11px;color:#999;margin-bottom:12px">差出人: ダミー銀行（2段階認証センター）</p>
+    <div class="sms-body">
+      ダミー銀行をご利用いただきありがとうございます。<br>認証コードは以下になります。<br><br>
+      【認証コード】<br><strong id="sms-code-display" style="font-size:28px;letter-spacing:6px;color:var(--primary)"></strong>
+    </div>
+    <button class="btn-primary full-width" id="btn-sms-close" style="margin-top:16px">閉じる</button>
+  </div>
+</div>
+<!-- Confirm Dialog -->
+<div id="modal-confirm" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-body" style="font-size:14px;color:#555;margin:12px 0 20px"></p>
+    <div style="display:flex;gap:12px">
+      <button class="btn-secondary" style="flex:1" id="btn-confirm-cancel">キャンセル</button>
+      <button class="btn-danger" style="flex:1" id="btn-confirm-ok"></button>
+    </div>
+  </div>
+</div>
+<!-- Success Overlay -->
+<div id="success-overlay" class="modal-overlay hidden">
+  <div class="success-card">
+    <div class="success-icon">✅</div>
+    <h2 id="success-title"></h2>
+    <p id="success-body"></p>
+  </div>
+</div>
+
+<!-- 2FA Floating Badge (shows OTP code on mypage when transfer is happening) -->
+<div id="otp-badge" class="otp-badge hidden">
+  <div class="otp-badge-label">ワンタイムパスワード</div>
+  <div id="otp-badge-code" class="otp-badge-code"></div>
+  <div class="otp-badge-note">振込完了後に自動的に消えます</div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
