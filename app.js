@@ -1,15 +1,23 @@
 // =========================================================
 // DUMMY BANK — Web Application JavaScript
 // Full port of Kotlin DummyBankSystem
+//
+// UPDATED: now shares its account state with the Android app through the
+// same backend (/api/state) that BankViewModel.kt already polls.
 // =========================================================
 
+// Point this at wherever dummybank-server/app.py is running.
+const API_BASE_URL = "http://localhost:8080/api/state";
+const POLL_INTERVAL_MS = 3000;
+
 // ---- DATA ----
+// Used only as a fallback if the server can't be reached (e.g. offline demo).
 const DUMMY_DATA = {
   accounts: {
     test: {
       accountInfo: {
         bankCode: "001", branchCode: "001",
-        accountNumber: "123-4567-890",
+        accountNumber: "1234567890",
         balance: 1284500,
         ownerName: "テスト タロウ"
       },
@@ -25,10 +33,7 @@ const DUMMY_DATA = {
       savingsAccounts: [
         { id:"sv_001", type:"FIXED", amount:500000, interestRate:0.15, termMonths:12, startDate:"2026-01-15", maturityDate:"2027-01-15", maturityInstruction:"AUTO_RENEW_WITH_INTEREST" },
         { id:"sv_002", type:"ACCUMULATION", amount:120000, monthlyDepositAmount:10000, depositDay:25, interestRate:0.18, termMonths:24, startDate:"2025-08-25", maturityDate:"2027-08-25", maturityInstruction:"AUTO_CANCEL" }
-      ],
-      twoFactorPhoneNumber: null,
-      isTwoFactorEnabled: false,
-      pending2FACode: null
+      ]
     },
     guest: {
       accountInfo: {
@@ -44,18 +49,87 @@ const DUMMY_DATA = {
       ],
       savingsAccounts: [
         { id:"sv_g01", type:"FIXED", amount:100000, interestRate:0.10, termMonths:6, startDate:"2026-05-10", maturityDate:"2026-11-10", maturityInstruction:"AUTO_CANCEL" }
-      ],
-      twoFactorPhoneNumber: null,
-      isTwoFactorEnabled: false,
-      pending2FACode: null
+      ]
     }
   }
 };
 
 // ---- STATE ----
 let currentUserId = null;
-let pendingTransfer = null;   // saved transfer data during 2FA
+let pendingTransfer = null;
 let pendingConfirmCallback = null;
+let pollTimer = null;
+
+// ---- SERVER SYNC ----
+function serverJsonToAccounts(json) {
+  const accounts = {};
+  for (const [userId, u] of Object.entries(json)) {
+    accounts[userId] = {
+      accountInfo: {
+        bankCode: u.bankCode,
+        branchCode: u.branchCode,
+        accountNumber: u.accountNumber,
+        balance: u.balance,
+        ownerName: u.ownerName
+      },
+      transactions: u.transactions || [],
+      savingsAccounts: u.savingsAccounts || []
+    };
+  }
+  return accounts;
+}
+
+function accountsToServerJson(accounts) {
+  const json = {};
+  for (const [userId, state] of Object.entries(accounts)) {
+    json[userId] = {
+      bankCode: state.accountInfo.bankCode,
+      branchCode: state.accountInfo.branchCode,
+      accountNumber: state.accountInfo.accountNumber,
+      balance: state.accountInfo.balance,
+      ownerName: state.accountInfo.ownerName,
+      transactions: state.transactions,
+      savingsAccounts: state.savingsAccounts
+    };
+  }
+  return json;
+}
+
+async function fetchServerState() {
+  try {
+    const res = await fetch(API_BASE_URL, { method: "GET" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return serverJsonToAccounts(json);
+  } catch (e) {
+    console.warn("Could not reach dummybank-server, using local state only.", e);
+    return null;
+  }
+}
+
+async function pushServerState() {
+  try {
+    await fetch(API_BASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(accountsToServerJson(DUMMY_DATA.accounts))
+    });
+  } catch (e) {
+    console.warn("Could not push state to dummybank-server.", e);
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    const serverAccounts = await fetchServerState();
+    if (!serverAccounts) return;
+    DUMMY_DATA.accounts = serverAccounts;
+    if (currentUserId && document.getElementById("screen-mypage").classList.contains("active")) {
+      renderMyPage();
+    }
+  }, POLL_INTERVAL_MS);
+}
 
 // ---- UTILS ----
 function fmt(n) {
@@ -74,12 +148,6 @@ function addMonths(dateStr, months) {
   const d = new Date(dateStr);
   d.setMonth(d.getMonth() + months);
   return d.toISOString().slice(0, 10);
-}
-function maskPhone(phone) {
-  const c = phone.replace(/-/g, "");
-  if (c.length === 11) return c.slice(0,3) + "-****-" + c.slice(-4);
-  if (c.length === 10) return c.slice(0,3) + "-***-" + c.slice(-4);
-  return phone;
 }
 
 // ---- NAVIGATION ----
@@ -102,14 +170,20 @@ function showToast(msg) {
 
 // ---- SUCCESS OVERLAY ----
 function showSuccess(title, body, cb) {
-  document.getElementById("success-title").textContent = title;
-  document.getElementById("success-body").textContent = body;
+  const titleEl = document.getElementById("success-title");
+  const bodyEl = document.getElementById("success-body");
+  if (titleEl) titleEl.textContent = title;
+  if (bodyEl) bodyEl.textContent = body;
   const overlay = document.getElementById("success-overlay");
-  overlay.classList.remove("hidden");
-  setTimeout(() => {
-    overlay.classList.add("hidden");
-    if (cb) cb();
-  }, 2200);
+  if (overlay) {
+    overlay.classList.remove("hidden");
+    setTimeout(() => {
+      overlay.classList.add("hidden");
+      if (cb) cb();
+    }, 2200);
+  } else if (cb) {
+    cb();
+  }
 }
 
 // ---- CONFIRM MODAL ----
@@ -149,14 +223,17 @@ function initLogin() {
   document.getElementById("login-userid").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("login-password").focus(); });
   document.getElementById("login-password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
-  function doLogin() {
+  async function doLogin() {
     errBanner.classList.add("hidden");
     const id = document.getElementById("login-userid").value.trim().toLowerCase();
     const pw = document.getElementById("login-password").value;
     if ((id === "test" && pw === "test") || (id === "guest" && pw === "guest")) {
       currentUserId = id;
+      const serverAccounts = await fetchServerState();
+      if (serverAccounts) DUMMY_DATA.accounts = serverAccounts;
       renderMyPage();
       showScreen("mypage");
+      startPolling();
     } else {
       errBanner.textContent = "ユーザーIDまたはパスワードが間違っています。";
       errBanner.classList.remove("hidden");
@@ -170,7 +247,7 @@ function initLogin() {
 function renderMyPage() {
   const state = getState();
   const info = state.accountInfo;
-  
+
   // Render bank card
   document.getElementById("account-card").innerHTML = `
     <div class="bank-card-header">
@@ -214,26 +291,12 @@ function renderMyPage() {
       `;
     }).join("");
   }
-
-  // OTP badge
-  updateOtpBadge();
-}
-
-function updateOtpBadge() {
-  if (!currentUserId) return;
-  const state = getState();
-  const badge = document.getElementById("otp-badge");
-  if (state.pending2FACode) {
-    document.getElementById("otp-badge-code").textContent = state.pending2FACode;
-    badge.classList.remove("hidden");
-  } else {
-    badge.classList.add("hidden");
-  }
 }
 
 function initMyPage() {
   document.getElementById("btn-logout").addEventListener("click", () => {
     currentUserId = null;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     document.getElementById("login-userid").value = "";
     document.getElementById("login-password").value = "";
     document.getElementById("login-error").classList.add("hidden");
@@ -252,6 +315,11 @@ function initMyPage() {
     renderSettingsScreen();
     showScreen("settings");
   });
+
+  // Remove 2FA issue button if it exists in DOM
+  const btnIssueCode = document.getElementById("menu-issue-code");
+  if (btnIssueCode) btnIssueCode.style.display = "none";
+
   document.getElementById("menu-loan").addEventListener("click", () => {
     showToast("「カードローン」機能は準備中です。");
   });
@@ -332,7 +400,7 @@ function initTransfer() {
     document.getElementById("btn-do-transfer").dataset.targetName = found.ownerName;
   });
 
-  document.getElementById("btn-do-transfer").addEventListener("click", () => {
+  document.getElementById("btn-do-transfer").addEventListener("click", async () => {
     const errEl = document.getElementById("transfer-error");
     errEl.classList.add("hidden");
 
@@ -358,41 +426,8 @@ function initTransfer() {
       amount: amount
     };
 
-    if (state.isTwoFactorEnabled) {
-      // Generate OTP
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      state.pending2FACode = code;
-      updateOtpBadge();
-
-      // Show 2FA dialog
-      document.getElementById("modal-2fa-code").value = "";
-      document.getElementById("modal-2fa-error").classList.add("hidden");
-      document.getElementById("modal-2fa-transfer").classList.remove("hidden");
-    } else {
-      // Direct transfer
-      doTransfer(pendingTransfer);
-    }
-  });
-
-  // 2FA modal
-  document.getElementById("btn-2fa-cancel").addEventListener("click", () => {
-    getState().pending2FACode = null;
-    updateOtpBadge();
-    document.getElementById("modal-2fa-transfer").classList.add("hidden");
-    pendingTransfer = null;
-  });
-  document.getElementById("btn-2fa-confirm").addEventListener("click", () => {
-    const entered = document.getElementById("modal-2fa-code").value;
-    const expected = getState().pending2FACode;
-    if (entered !== expected) {
-      document.getElementById("modal-2fa-error").textContent = "認証コードが正しくありません。";
-      document.getElementById("modal-2fa-error").classList.remove("hidden");
-      return;
-    }
-    getState().pending2FACode = null;
-    updateOtpBadge();
-    document.getElementById("modal-2fa-transfer").classList.add("hidden");
-    doTransfer(pendingTransfer);
+    // Direct transfer - 2FA removed
+    await doTransfer(pendingTransfer);
   });
 }
 
@@ -406,7 +441,7 @@ function findAccount(bankCode, branchCode, accountNumber) {
   return null;
 }
 
-function doTransfer(t) {
+async function doTransfer(t) {
   const fromState = getState();
   const toEntry = Object.entries(DUMMY_DATA.accounts).find(([, s]) =>
     s.accountInfo.bankCode === t.toBankCode &&
@@ -433,6 +468,7 @@ function doTransfer(t) {
   });
 
   pendingTransfer = null;
+  await pushServerState();
   showSuccess(
     "振込が完了しました",
     `${t.toName} 様へ\n${fmt(t.amount)}`,
@@ -453,27 +489,31 @@ function getInterestRate(months) {
 
 function renderSavingsScreen() {
   const state = getState();
-  // Summary card
   const totalSavings = state.savingsAccounts.reduce((s, a) => s + a.amount, 0);
-  document.getElementById("savings-summary-card").innerHTML = `
-    <div class="bank-card-balance-label">定期・積立 合計残高</div>
-    <div class="bank-card-balance">${fmt(totalSavings)}</div>
-    <div style="opacity:0.65;font-size:13px">保有口座数: ${state.savingsAccounts.length}口</div>
-  `;
+  const summaryCard = document.getElementById("savings-summary-card");
+  if (summaryCard) {
+    summaryCard.innerHTML = `
+      <div class="bank-card-balance-label">定期・積立 合計残高</div>
+      <div class="bank-card-balance">${fmt(totalSavings)}</div>
+      <div style="opacity:0.65;font-size:13px">保有口座数: ${state.savingsAccounts.length}口</div>
+    `;
+  }
 
-  // List
   renderSavingsList();
 
-  // Apply balance card
-  document.getElementById("savings-balance-card").innerHTML = `
-    <div class="info-card-label">引出元口座（普通預金）</div>
-    <div class="info-card-balance">ご利用可能残高: ${fmt(state.accountInfo.balance)}</div>
-  `;
+  const balanceCard = document.getElementById("savings-balance-card");
+  if (balanceCard) {
+    balanceCard.innerHTML = `
+      <div class="info-card-label">引出元口座（普通預金）</div>
+      <div class="info-card-balance">ご利用可能残高: ${fmt(state.accountInfo.balance)}</div>
+    `;
+  }
 }
 
 function renderSavingsList() {
   const state = getState();
   const container = document.getElementById("savings-list-container");
+  if (!container) return;
   if (state.savingsAccounts.length === 0) {
     container.innerHTML = `
       <div style="text-align:center;padding:48px 0">
@@ -531,7 +571,7 @@ function toggleSavingsItem(id) {
   const body = document.getElementById("sv-body-" + id);
   const chev = document.getElementById("sv-chevron-" + id);
   const isOpen = body.classList.toggle("open");
-  chev.style.transform = isOpen ? "rotate(180deg)" : "rotate(0deg)";
+  if (chev) chev.style.transform = isOpen ? "rotate(180deg)" : "rotate(0deg)";
 }
 
 function confirmCancelSavings(id, name, amtStr) {
@@ -543,7 +583,7 @@ function confirmCancelSavings(id, name, amtStr) {
   );
 }
 
-function cancelSavings(id) {
+async function cancelSavings(id) {
   const state = getState();
   const sv = state.savingsAccounts.find(s => s.id === id);
   if (!sv) return;
@@ -555,6 +595,7 @@ function cancelSavings(id) {
     amount: sv.amount, type: "deposit"
   });
   state.savingsAccounts = state.savingsAccounts.filter(s => s.id !== id);
+  await pushServerState();
   showSuccess("解約が完了しました", "普通預金口座に資金が払い戻されました。", () => {
     renderSavingsScreen();
     switchSavingsTab("savings-list");
@@ -564,43 +605,56 @@ function cancelSavings(id) {
 function switchSavingsTab(tabId) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-  document.getElementById("tab-" + tabId).classList.add("active");
-  document.getElementById(tabId).classList.add("active");
+  const tabBtn = document.getElementById("tab-" + tabId);
+  const tabContent = document.getElementById(tabId);
+  if (tabBtn) tabBtn.classList.add("active");
+  if (tabContent) tabContent.classList.add("active");
 }
 
 function initSavings() {
-  document.getElementById("btn-savings-back").addEventListener("click", () => {
-    renderMyPage();
-    showScreen("mypage");
-  });
+  const btnBack = document.getElementById("btn-savings-back");
+  if (btnBack) {
+    btnBack.addEventListener("click", () => {
+      renderMyPage();
+      showScreen("mypage");
+    });
+  }
 
-  // Tab buttons
-  document.getElementById("tab-savings-list").addEventListener("click", () => switchSavingsTab("savings-list"));
-  document.getElementById("tab-savings-apply").addEventListener("click", () => {
+  const tabList = document.getElementById("tab-savings-list");
+  if (tabList) tabList.addEventListener("click", () => switchSavingsTab("savings-list"));
+
+  const tabApply = document.getElementById("tab-savings-apply");
+  if (tabApply) tabApply.addEventListener("click", () => {
     renderSavingsApplyBalance();
     switchSavingsTab("savings-apply");
   });
-  document.getElementById("savings-go-apply").addEventListener("click", () => {
+
+  const goApply = document.getElementById("savings-go-apply");
+  if (goApply) goApply.addEventListener("click", () => {
     renderSavingsApplyBalance();
     switchSavingsTab("savings-apply");
   });
 
-  // Type toggle
-  document.getElementById("sv-type-fixed").addEventListener("click", () => setSavingsType("FIXED"));
-  document.getElementById("sv-type-acc").addEventListener("click", () => setSavingsType("ACCUMULATION"));
+  const typeFixed = document.getElementById("sv-type-fixed");
+  if (typeFixed) typeFixed.addEventListener("click", () => setSavingsType("FIXED"));
 
-  // Term chips
-  document.getElementById("term-chips").addEventListener("click", e => {
-    const chip = e.target.closest(".chip");
-    if (!chip) return;
-    document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-    chip.classList.add("active");
-    selectedTermMonths = parseInt(chip.dataset.months);
-    document.getElementById("interest-rate-val").textContent = getInterestRate(selectedTermMonths) + "%";
-  });
+  const typeAcc = document.getElementById("sv-type-acc");
+  if (typeAcc) typeAcc.addEventListener("click", () => setSavingsType("ACCUMULATION"));
 
-  // Apply button
-  document.getElementById("btn-sv-apply").addEventListener("click", doApplySavings);
+  const termChips = document.getElementById("term-chips");
+  if (termChips) {
+    termChips.addEventListener("click", e => {
+      const chip = e.target.closest(".chip");
+      if (!chip) return;
+      document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      selectedTermMonths = parseInt(chip.dataset.months);
+      document.getElementById("interest-rate-val").textContent = getInterestRate(selectedTermMonths) + "%";
+    });
+  }
+
+  const btnApply = document.getElementById("btn-sv-apply");
+  if (btnApply) btnApply.addEventListener("click", doApplySavings);
 }
 
 function setSavingsType(type) {
@@ -613,13 +667,16 @@ function setSavingsType(type) {
 
 function renderSavingsApplyBalance() {
   const state = getState();
-  document.getElementById("savings-balance-card").innerHTML = `
-    <div class="info-card-label">引出元口座（普通預金）</div>
-    <div class="info-card-balance">ご利用可能残高: ${fmt(state.accountInfo.balance)}</div>
-  `;
+  const card = document.getElementById("savings-balance-card");
+  if (card) {
+    card.innerHTML = `
+      <div class="info-card-label">引出元口座（普通預金）</div>
+      <div class="info-card-balance">ご利用可能残高: ${fmt(state.accountInfo.balance)}</div>
+    `;
+  }
 }
 
-function doApplySavings() {
+async function doApplySavings() {
   const errEl = document.getElementById("sv-apply-error");
   errEl.classList.add("hidden");
   const state = getState();
@@ -664,10 +721,11 @@ function doApplySavings() {
   };
   state.savingsAccounts.push(newSv);
 
-  // Reset form
   document.getElementById("sv-amount").value = "";
   document.getElementById("sv-monthly").value = "";
   document.getElementById("sv-total").value = "";
+
+  await pushServerState();
 
   const fmtDeduction = fmt(deduction);
   const typeName = type === "FIXED" ? "定期預金" : "積立定期預金";
@@ -684,152 +742,28 @@ function doApplySavings() {
 // =========================================================
 // SETTINGS
 // =========================================================
-let generatedSetupCode = "";
-let timerInterval;
-
 function renderSettingsScreen() {
-  const state = getState();
-  // Show portal
   document.getElementById("settings-portal").classList.remove("hidden");
   document.getElementById("settings-2fa").classList.add("hidden");
-  document.getElementById("settings-header-title").textContent = "各種お手続き";
-  update2FAStatusLabel();
-}
-
-function update2FAStatusLabel() {
-  const state = getState();
-  const label = document.getElementById("two-fa-status-label");
-  if (state.isTwoFactorEnabled && state.twoFactorPhoneNumber) {
-    label.textContent = `設定済 (${maskPhone(state.twoFactorPhoneNumber)})`;
-    label.style.color = "var(--accent)";
-  } else {
-    label.textContent = "未設定（SMSによる本人確認設定）";
-    label.style.color = "";
-  }
-}
-
-function show2FASetup() {
-  const state = getState();
-  document.getElementById("settings-portal").classList.add("hidden");
-  document.getElementById("settings-2fa").classList.remove("hidden");
-  document.getElementById("settings-header-title").textContent = "2段階認証設定";
-
-  if (state.isTwoFactorEnabled && state.twoFactorPhoneNumber) {
-    document.getElementById("2fa-enabled-view").classList.remove("hidden");
-    document.getElementById("2fa-disabled-view").classList.add("hidden");
-    document.getElementById("2fa-phone-masked").textContent = `現在登録されている携帯電話番号:\n${maskPhone(state.twoFactorPhoneNumber)}`;
-  } else {
-    document.getElementById("2fa-enabled-view").classList.add("hidden");
-    document.getElementById("2fa-disabled-view").classList.remove("hidden");
-    // Reset form
-    document.getElementById("two-fa-phone").value = "";
-    document.getElementById("two-fa-code").value = "";
-    document.getElementById("2fa-code-section").classList.add("hidden");
-    document.getElementById("2fa-setup-error").classList.add("hidden");
-    generatedSetupCode = "";
-    clearInterval(timerInterval);
-    document.getElementById("2fa-timer-text").textContent = "";
-    document.getElementById("btn-send-code").disabled = false;
-    document.getElementById("btn-send-code").textContent = "コード送信";
-  }
-}
-
-function startTimer(seconds) {
-  clearInterval(timerInterval);
-  let remaining = seconds;
-  const btn = document.getElementById("btn-send-code");
-  const timerEl = document.getElementById("2fa-timer-text");
-  timerEl.textContent = `認証コードは3分間有効です。再度コードを送信するには ${remaining} 秒お待ちください。`;
-  btn.disabled = true;
-  btn.textContent = `${remaining}秒`;
-  timerInterval = setInterval(() => {
-    remaining--;
-    if (remaining <= 0) {
-      clearInterval(timerInterval);
-      btn.disabled = false;
-      btn.textContent = "再送信";
-      timerEl.textContent = "認証コードが届かない場合は、再度送信ボタンを押してください。";
-    } else {
-      btn.textContent = `${remaining}秒`;
-      timerEl.textContent = `認証コードは3分間有効です。再度コードを送信するには ${remaining} 秒お待ちください。`;
-    }
-  }, 1000);
+  document.getElementById("settings-header-title").textContent = "各種お手手続き";
 }
 
 function initSettings() {
   document.getElementById("btn-settings-back").addEventListener("click", () => {
     const twoFaView = document.getElementById("settings-2fa");
-    if (!twoFaView.classList.contains("hidden")) {
-      // Go back to portal
+    if (twoFaView && !twoFaView.classList.contains("hidden")) {
       document.getElementById("settings-portal").classList.remove("hidden");
       twoFaView.classList.add("hidden");
       document.getElementById("settings-header-title").textContent = "各種お手続き";
-      clearInterval(timerInterval);
     } else {
       renderMyPage();
       showScreen("mypage");
     }
   });
 
-  document.getElementById("settings-go-2fa").addEventListener("click", () => show2FASetup());
-
-  // Send code button
-  document.getElementById("btn-send-code").addEventListener("click", () => {
-    const phone = document.getElementById("two-fa-phone").value.trim();
-    const clean = phone.replace(/-/g, "");
-    if (clean.length < 10 || clean.length > 11) {
-      showToast("正しい携帯電話番号を入力してください。");
-      return;
-    }
-    generatedSetupCode = String(Math.floor(100000 + Math.random() * 900000));
-    document.getElementById("sms-code-display").textContent = generatedSetupCode;
-    document.getElementById("modal-sms").classList.remove("hidden");
-    document.getElementById("2fa-code-section").classList.remove("hidden");
-    startTimer(60);
-  });
-
-  document.getElementById("btn-sms-close").addEventListener("click", () => {
-    document.getElementById("modal-sms").classList.add("hidden");
-  });
-
-  // Verify & enable
-  document.getElementById("btn-verify-enable").addEventListener("click", () => {
-    const code = document.getElementById("two-fa-code").value;
-    const errEl = document.getElementById("2fa-setup-error");
-    if (code !== generatedSetupCode) {
-      errEl.textContent = "認証コードが正しくありません。再度ご確認ください。";
-      errEl.classList.remove("hidden");
-      return;
-    }
-    errEl.classList.add("hidden");
-    const phone = document.getElementById("two-fa-phone").value.trim();
-    clearInterval(timerInterval);
-    const state = getState();
-    state.twoFactorPhoneNumber = phone;
-    state.isTwoFactorEnabled = true;
-    showSuccess("2段階認証を設定しました", "", () => {
-      update2FAStatusLabel();
-      show2FASetup();
-    });
-  });
-
-  // Disable 2FA
-  document.getElementById("btn-2fa-disable").addEventListener("click", () => {
-    showConfirm(
-      "2段階認証の解除確認",
-      "本当に2段階認証を解除しますか？\n解除すると、アカウントのセキュリティ強度が低下します。",
-      "解除する",
-      () => {
-        const state = getState();
-        state.twoFactorPhoneNumber = null;
-        state.isTwoFactorEnabled = false;
-        showSuccess("2段階認証を解除しました", "", () => {
-          update2FAStatusLabel();
-          show2FASetup();
-        });
-      }
-    );
-  });
+  // Hide 2FA entry point in settings
+  const go2fa = document.getElementById("settings-go-2fa");
+  if (go2fa) go2fa.style.display = "none";
 }
 
 // =========================================================
