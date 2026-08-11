@@ -1,17 +1,14 @@
 // =========================================================
 // DUMMY BANK — Web Application JavaScript
-// Full port of Kotlin DummyBankSystem
-//
-// UPDATED: now shares its account state with the Android app through the
-// same backend (/api/state) that BankViewModel.kt already polls.
+// Demo Version for GitHub Pages
 // =========================================================
 
-// Point this at wherever dummybank-server/app.py is running.
-const API_BASE_URL = "http://localhost:8080/api/state";
-const POLL_INTERVAL_MS = 3000;
+// Points to your GitHub Pages data.json
+const API_BASE_URL = "https://blackcivic4145.github.io/DummyBankSystem/data.json";
+const POLL_INTERVAL_MS = 5000;
 
 // ---- DATA ----
-// Used only as a fallback if the server can't be reached (e.g. offline demo).
+// Used as a fallback if GitHub can't be reached.
 const DUMMY_DATA = {
   accounts: {
     test: {
@@ -33,7 +30,9 @@ const DUMMY_DATA = {
       savingsAccounts: [
         { id:"sv_001", type:"FIXED", amount:500000, interestRate:0.15, termMonths:12, startDate:"2026-01-15", maturityDate:"2027-01-15", maturityInstruction:"AUTO_RENEW_WITH_INTEREST" },
         { id:"sv_002", type:"ACCUMULATION", amount:120000, monthlyDepositAmount:10000, depositDay:25, interestRate:0.18, termMonths:24, startDate:"2025-08-25", maturityDate:"2027-08-25", maturityInstruction:"AUTO_CANCEL" }
-      ]
+      ],
+      isPayPayLinked: true,
+      paypayBalance: 20000
     },
     guest: {
       accountInfo: {
@@ -49,7 +48,9 @@ const DUMMY_DATA = {
       ],
       savingsAccounts: [
         { id:"sv_g01", type:"FIXED", amount:100000, interestRate:0.10, termMonths:6, startDate:"2026-05-10", maturityDate:"2026-11-10", maturityInstruction:"AUTO_CANCEL" }
-      ]
+      ],
+      isPayPayLinked: true,
+      paypayBalance: 20000
     }
   }
 };
@@ -73,7 +74,9 @@ function serverJsonToAccounts(json) {
         ownerName: u.ownerName
       },
       transactions: u.transactions || [],
-      savingsAccounts: u.savingsAccounts || []
+      savingsAccounts: u.savingsAccounts || [],
+      isPayPayLinked: !!u.isPayPayLinked,
+      paypayBalance: u.paypayBalance || 0
     };
   }
   return accounts;
@@ -89,7 +92,9 @@ function accountsToServerJson(accounts) {
       balance: state.accountInfo.balance,
       ownerName: state.accountInfo.ownerName,
       transactions: state.transactions,
-      savingsAccounts: state.savingsAccounts
+      savingsAccounts: state.savingsAccounts,
+      isPayPayLinked: state.isPayPayLinked,
+      paypayBalance: state.paypayBalance
     };
   }
   return json;
@@ -102,21 +107,14 @@ async function fetchServerState() {
     const json = await res.json();
     return serverJsonToAccounts(json);
   } catch (e) {
-    console.warn("Could not reach dummybank-server, using local state only.", e);
+    console.warn("Could not reach GitHub Pages data, using local state only.", e);
     return null;
   }
 }
 
 async function pushServerState() {
-  try {
-    await fetch(API_BASE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(accountsToServerJson(DUMMY_DATA.accounts))
-    });
-  } catch (e) {
-    console.warn("Could not push state to dummybank-server.", e);
-  }
+  // Read-only demo mode
+  console.log("Local state updated (Read-only demo):", DUMMY_DATA.accounts);
 }
 
 function startPolling() {
@@ -426,7 +424,7 @@ function initTransfer() {
       amount: amount
     };
 
-    // Direct transfer - 2FA removed
+    // Direct transfer
     await doTransfer(pendingTransfer);
   });
 }
@@ -554,7 +552,7 @@ function renderSavingsList() {
         </div>
         <div class="savings-item-body" id="sv-body-${sv.id}">
           <div class="savings-detail-row"><span class="savings-detail-label">金利</span><span class="savings-detail-value">${sv.interestRate}%（年利）</span></div>
-          <div class="savings-detail-row"><span class="savings-detail-label">預入期間</span><span class="savings-detail-value">${sv.termMonths}ヶ月</span></div>
+          <div class="savings-detail-row"><span class="savings-detail-label">預入期間</span><span class="savings-detail-label">${sv.termMonths}ヶ月</span></div>
           <div class="savings-detail-row"><span class="savings-detail-label">預入開始日</span><span class="savings-detail-value">${fmtDate(sv.startDate)}</span></div>
           <div class="savings-detail-row"><span class="savings-detail-label">満期時の取扱</span><span class="savings-detail-value">${matLabel}</span></div>
           ${extraRows}
@@ -749,19 +747,21 @@ function renderSettingsScreen() {
 }
 
 function initSettings() {
-  document.getElementById("btn-settings-back").addEventListener("click", () => {
-    const twoFaView = document.getElementById("settings-2fa");
-    if (twoFaView && !twoFaView.classList.contains("hidden")) {
-      document.getElementById("settings-portal").classList.remove("hidden");
-      twoFaView.classList.add("hidden");
-      document.getElementById("settings-header-title").textContent = "各種お手続き";
-    } else {
-      renderMyPage();
-      showScreen("mypage");
-    }
-  });
+  const btnSettingsBack = document.getElementById("btn-settings-back");
+  if (btnSettingsBack) {
+    btnSettingsBack.addEventListener("click", () => {
+      const twoFaView = document.getElementById("settings-2fa");
+      if (twoFaView && !twoFaView.classList.contains("hidden")) {
+        document.getElementById("settings-portal").classList.remove("hidden");
+        twoFaView.classList.add("hidden");
+        document.getElementById("settings-header-title").textContent = "各種お手続き";
+      } else {
+        renderMyPage();
+        showScreen("mypage");
+      }
+    });
+  }
 
-  // Hide 2FA entry point in settings
   const go2fa = document.getElementById("settings-go-2fa");
   if (go2fa) go2fa.style.display = "none";
 }
@@ -770,17 +770,23 @@ function initSettings() {
 // CONFIRM MODAL
 // =========================================================
 function initConfirmModal() {
-  document.getElementById("btn-confirm-cancel").addEventListener("click", () => {
-    document.getElementById("modal-confirm").classList.add("hidden");
-    pendingConfirmCallback = null;
-  });
-  document.getElementById("btn-confirm-ok").addEventListener("click", () => {
-    document.getElementById("modal-confirm").classList.add("hidden");
-    if (pendingConfirmCallback) {
-      pendingConfirmCallback();
+  const btnCancel = document.getElementById("btn-confirm-cancel");
+  if (btnCancel) {
+    btnCancel.addEventListener("click", () => {
+      document.getElementById("modal-confirm").classList.add("hidden");
       pendingConfirmCallback = null;
-    }
-  });
+    });
+  }
+  const btnOk = document.getElementById("btn-confirm-ok");
+  if (btnOk) {
+    btnOk.addEventListener("click", () => {
+      document.getElementById("modal-confirm").classList.add("hidden");
+      if (pendingConfirmCallback) {
+        pendingConfirmCallback();
+        pendingConfirmCallback = null;
+      }
+    });
+  }
 }
 
 // =========================================================
