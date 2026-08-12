@@ -5,7 +5,7 @@
 
 // Points to your GitHub Pages data.json
 const API_BASE_URL = "https://blackcivic4145.github.io/DummyBankSystem/data.json";
-const GITHUB_TOKEN = "YhBC4Ade2zFfgMzvLZv7S1y1kYZUV0j1kUC2ymLUVjI="
+const GITHUB_TOKEN = "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"
 const POLL_INTERVAL_MS = 5000;
 
 // ---- DATA ----
