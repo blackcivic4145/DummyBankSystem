@@ -1,6 +1,6 @@
 // =========================================================
 // DUMMY BANK — Web Application JavaScript
-// GitHub API Sync Version (Enterprise Grade Consistency)
+// GitHub API Sync Version (Ultimate Consistency & Multi-Device Sync)
 // =========================================================
 
 const GITHUB_TOKEN = "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";
@@ -13,13 +13,13 @@ const POLL_INTERVAL_MS = 5000;
 let DUMMY_DATA = { accounts: {} };
 let currentUserId = null;
 let pollTimer = null;
+let isPushing = false; // Sync Lock
 
 // ---- UTILS ----
 function fmt(n) { return "¥" + Number(n).toLocaleString("ja-JP"); }
 function fmtDate(d) { return d.replace(/-/g, "/"); }
 function uuid() { return "xxxxxxxx".replace(/x/g, () => Math.floor(Math.random()*16).toString(16)); }
 function today() { return new Date().toISOString().slice(0, 10); }
-function addMonths(dStr, m) { const d = new Date(dStr); d.setMonth(d.getMonth()+m); return d.toISOString().slice(0,10); }
 
 function b64EncodeUnicode(str) { return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUnicode(str) { return decodeURIComponent(escape(atob(str))); }
@@ -34,7 +34,8 @@ async function fetchServerState() {
   } catch (e) { return null; }
 }
 
-async function pushServerState() {
+async function pushServerState(retries = 2) {
+  isPushing = true;
   try {
     const getRes = await fetch(GITHUB_API_URL, { headers: { "Authorization": `token ${GITHUB_TOKEN}` } });
     const metadata = await getRes.json();
@@ -47,17 +48,20 @@ async function pushServerState() {
         sha: metadata.sha
       })
     });
-    // Post-push reload
-    setTimeout(async () => {
-        const latest = await fetchServerState();
-        if (latest) { DUMMY_DATA.accounts = latest; if(currentUserId) renderMyPage(); }
-    }, 1500);
+    if (res.status === 409 && retries > 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        return pushServerState(retries - 1);
+    }
+    const latest = await fetchServerState();
+    if (latest) { DUMMY_DATA.accounts = latest; if(currentUserId) renderMyPage(); }
   } catch (e) { }
+  finally { isPushing = false; }
 }
 
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(async () => {
+    if (isPushing) return;
     const accounts = await fetchServerState();
     if (accounts) {
       DUMMY_DATA.accounts = accounts;
@@ -81,15 +85,10 @@ function showSuccess(title, body, cb) {
   const overlay = document.getElementById("success-overlay"); overlay.classList.remove("hidden");
   setTimeout(() => { overlay.classList.add("hidden"); if (cb) cb(); }, 2200);
 }
-function showConfirm(title, body, okLabel, cb) {
-  document.getElementById("confirm-title").textContent = title; document.getElementById("confirm-body").textContent = body;
-  document.getElementById("btn-confirm-ok").textContent = okLabel; document.getElementById("modal-confirm").classList.remove("hidden");
-  window.pendingConfirmCallback = cb;
-}
 
 function getState() { return DUMMY_DATA.accounts[currentUserId]; }
 
-// ---- APP ----
+// ---- LOGIN ----
 function initLogin() {
   document.getElementById("btn-login").onclick = async () => {
     const id = document.getElementById("login-userid").value.trim().toLowerCase();
@@ -104,6 +103,7 @@ function initLogin() {
   };
 }
 
+// ---- PAGES ----
 function renderMyPage() {
   const s = getState();
   document.getElementById("account-card").innerHTML = `<div class="bank-card-header"><span class="bank-card-name">DUMMY BANK CASH CARD</span><span class="bank-card-visa">VISA</span></div><div class="bank-card-balance-label">ご利用可能残高</div><div class="bank-card-balance">${fmt(s.balance)}</div><div class="bank-card-footer"><div><div class="bank-card-info-label">口座番号</div><div class="bank-card-info-value">${s.accountNumber}</div></div><div style="text-align:right"><div class="bank-card-info-label">名義人</div><div class="bank-card-info-value">${s.ownerName}</div></div></div>`;
@@ -131,9 +131,8 @@ function initTransfer() {
     const b = document.getElementById("transfer-bank").value, br = document.getElementById("transfer-branch").value.trim(), ac = document.getElementById("transfer-acno").value.trim();
     const entry = Object.entries(DUMMY_DATA.accounts).find(([id, s]) => s.bankCode === b && s.branchCode === br && s.accountNumber === ac);
     if (entry) {
-      const conf = document.getElementById("transfer-confirmed");
-      conf.innerHTML = `<div class="confirmed-card-icon">✅</div><div><div class="confirmed-card-name-label">受取人</div><div class="confirmed-card-name">${entry[1].ownerName} 様</div></div>`;
-      conf.classList.remove("hidden"); document.getElementById("transfer-amount").disabled = false;
+      document.getElementById("transfer-confirmed").innerHTML = `<div class="confirmed-card-icon">✅</div><div><div class="confirmed-card-name-label">受取人</div><div class="confirmed-card-name">${entry[1].ownerName} 様</div></div>`;
+      document.getElementById("transfer-confirmed").classList.remove("hidden"); document.getElementById("transfer-amount").disabled = false;
       const btn = document.getElementById("btn-do-transfer"); btn.disabled = false; btn.dataset.targetId = entry[0];
     } else { showToast("口座が見つかりません"); }
   };
@@ -159,8 +158,6 @@ function initSavings() {
 
 document.addEventListener("DOMContentLoaded", () => {
   initLogin(); initMyPage(); initTransfer(); initSavings();
-  document.getElementById("btn-confirm-ok").onclick = () => { document.getElementById("modal-confirm").classList.add("hidden"); if(window.pendingConfirmCallback) window.pendingConfirmCallback(); };
-  document.getElementById("btn-confirm-cancel").onclick = () => document.getElementById("modal-confirm").classList.add("hidden");
   document.getElementById("btn-settings-back").onclick = () => showScreen("mypage");
   const go2fa = document.getElementById("settings-go-2fa"); if (go2fa) go2fa.style.display = "none";
 });
