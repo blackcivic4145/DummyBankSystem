@@ -68,7 +68,8 @@ async function fetchServerState() {
         return null;
     }
     const data = await res.json();
-    return JSON.parse(b64DecodeUnicode(data.content.replace(/\n/g, "")));
+    // Remove all whitespace from content before decoding
+    return JSON.parse(b64DecodeUnicode(data.content.replace(/\s/g, "")));
   } catch (e) { return null; }
 }
 
@@ -114,12 +115,15 @@ async function pushServerState(accounts, retries = 2) {
   }
 }
 
+/**
+ * Atomic update logic to prevent clobbering other users
+ */
 async function atomicUpdate(updateFn) {
     const latest = await fetchServerState();
     const accounts = latest || DUMMY_DATA.accounts;
     const res = updateFn(accounts);
     DUMMY_DATA.accounts = accounts;
-    refreshActiveScreen();
+    refreshActiveState();
     await pushServerState(accounts);
     return res;
 }
