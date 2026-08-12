@@ -68,7 +68,6 @@ async function fetchServerState() {
         return null;
     }
     const data = await res.json();
-    // Remove all whitespace from content before decoding
     return JSON.parse(b64DecodeUnicode(data.content.replace(/\s/g, "")));
   } catch (e) { return null; }
 }
@@ -79,7 +78,6 @@ async function pushServerState(accounts, retries = 2) {
   isPushing = true;
   ignorePollingUntil = Date.now() + 10000;
   try {
-    // Fixed: Added User-Agent to the SHA fetch request
     const getRes = await fetch(`${GITHUB_API_URL}?t=${Date.now()}`, {
         headers: {
             "Authorization": `token ${token}`,
@@ -115,9 +113,6 @@ async function pushServerState(accounts, retries = 2) {
   }
 }
 
-/**
- * Atomic update logic to prevent clobbering other users
- */
 async function atomicUpdate(updateFn) {
     const latest = await fetchServerState();
     const accounts = latest || DUMMY_DATA.accounts;
