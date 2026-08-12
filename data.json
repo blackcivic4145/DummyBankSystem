@@ -3,9 +3,16 @@
     "bankCode": "001",
     "branchCode": "001",
     "accountNumber": "1234567890",
-    "balance": 1283500,
+    "balance": 1282500,
     "ownerName": "テスト タロウ",
     "transactions": [
+      {
+        "id": "8935a74c-da81-4cce-9d75-9764ac95076f",
+        "date": "2026-08-12",
+        "description": "振込支払",
+        "amount": 1000,
+        "type": "withdrawal"
+      },
       {
         "id": "ebcb738b-6700-4408-b230-a7b3cbcc4d25",
         "date": "2026-08-12",
@@ -22,9 +29,16 @@
     "bankCode": "001",
     "branchCode": "002",
     "accountNumber": "0987654321",
-    "balance": 501000,
+    "balance": 502000,
     "ownerName": "ゲスト ジロウ",
     "transactions": [
+      {
+        "id": "b05e5097-9f79-4cc9-a12a-f958d1cae5b6",
+        "date": "2026-08-12",
+        "description": "振込入金",
+        "amount": 1000,
+        "type": "deposit"
+      },
       {
         "id": "a9a2e2de-c3cd-4156-8ed1-bb1ab746090d",
         "date": "2026-08-12",
