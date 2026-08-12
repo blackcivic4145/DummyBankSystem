@@ -123,7 +123,7 @@ async function atomicUpdate(updateFn) {
     const accounts = latest || DUMMY_DATA.accounts;
     const res = updateFn(accounts);
     DUMMY_DATA.accounts = accounts;
-    refreshActiveState();
+    refreshActiveScreen();
     await pushServerState(accounts);
     return res;
 }
