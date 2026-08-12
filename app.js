@@ -118,7 +118,7 @@ async function atomicUpdate(updateFn) {
     const accounts = latest || DUMMY_DATA.accounts;
     const res = updateFn(accounts);
     DUMMY_DATA.accounts = accounts;
-    refreshActiveScreen();
+    refreshActiveScreen(); // FIXED: Corrected function name from refreshActiveState
     await pushServerState(accounts);
     return res;
 }
