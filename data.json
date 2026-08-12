@@ -1,1 +1,25 @@
+{
+  "test": {
+    "bankCode": "001",
+    "branchCode": "001",
+    "accountNumber": "1234567890",
+    "balance": 1284500,
+    "ownerName": "テスト タロウ",
+    "isPayPayLinked": true,
+    "paypayBalance": 20000,
+    "transactions": [],
+    "savingsAccounts": []
+  },
+  "guest": {
+    "bankCode": "001",
+    "branchCode": "002",
+    "accountNumber": "0987654321",
+    "balance": 500000,
+    "ownerName": "ゲスト ジロウ",
+    "isPayPayLinked": true,
+    "paypayBalance": 20000,
+    "transactions": [],
+    "savingsAccounts": []
+  }
+}
 
