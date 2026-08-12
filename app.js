@@ -78,7 +78,14 @@ async function pushServerState(accounts, retries = 2) {
   isPushing = true;
   ignorePollingUntil = Date.now() + 10000;
   try {
-    const getRes = await fetch(GITHUB_API_URL, { headers: { "Authorization": `token ${token}` } });
+    // Fixed: Added User-Agent to the SHA fetch request
+    const getRes = await fetch(`${GITHUB_API_URL}?t=${Date.now()}`, {
+        headers: {
+            "Authorization": `token ${token}`,
+            "User-Agent": "DummyBankWebApp",
+            "Cache-Control": "no-cache"
+        }
+    });
     const metadata = await getRes.json();
     const res = await fetch(GITHUB_API_URL, {
       method: "PUT",
@@ -107,9 +114,6 @@ async function pushServerState(accounts, retries = 2) {
   }
 }
 
-/**
- * Atomic update logic to prevent clobbering other users
- */
 async function atomicUpdate(updateFn) {
     const latest = await fetchServerState();
     const accounts = latest || DUMMY_DATA.accounts;
