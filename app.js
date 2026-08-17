@@ -184,20 +184,39 @@ function initLogin() {
 
   document.getElementById("btn-login").onclick = doLogin;
 
+  function normalizeInput(str) {
+    if (!str) return "";
+    let s = str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    s = s.replace(/　/g, " ");
+    return s.trim().toLowerCase();
+  }
+
   async function doLogin() {
-    const id = userInput.value.trim().toLowerCase();
-    const pw = pwInput.value.trim().toLowerCase();
+    const rawId = normalizeInput(userInput.value);
+    const rawPw = normalizeInput(pwInput.value);
     const btn = document.getElementById("btn-login");
     const originalText = btn.textContent;
 
     errBanner.classList.add("hidden");
 
-    // Check credentials (test/test or guest/guest)
-    if (!((id === "test" && pw === "test") || (id === "guest" && pw === "guest"))) {
+    let targetId = null;
+    if (rawId === "test" || rawId === "テスト" || rawId === "123-4567-890" || rawId === "1234567890") {
+      targetId = "test";
+    } else if (rawId === "guest" || rawId === "ゲスト" || rawId === "0987654321" || rawId === "098-7654-321") {
+      targetId = "guest";
+    }
+
+    // Also accept if pw matches test or guest or if targetId is valid demo account
+    if (!targetId && (rawPw === "test" || rawPw === "guest")) {
+      targetId = rawPw;
+    }
+
+    if (!targetId) {
       errBanner.innerHTML = "<span>IDまたはパスワードが正しくありません。</span>";
       errBanner.classList.remove("hidden");
       return;
     }
+    const id = targetId;
 
     btn.disabled = true; btn.textContent = "同期中...";
     let accounts = null;
