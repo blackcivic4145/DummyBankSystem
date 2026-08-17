@@ -199,22 +199,10 @@ function initLogin() {
 
     errBanner.classList.add("hidden");
 
-    let targetId = null;
-    if (rawId === "test" || rawId === "テスト" || rawId === "123-4567-890" || rawId === "1234567890") {
-      targetId = "test";
-    } else if (rawId === "guest" || rawId === "ゲスト" || rawId === "0987654321" || rawId === "098-7654-321") {
+    // Always grant login to demo account (guest if specified, otherwise test)
+    let targetId = "test";
+    if (rawId.includes("guest") || rawId.includes("ゲスト") || rawId.includes("098") || rawPw.includes("guest")) {
       targetId = "guest";
-    }
-
-    // Also accept if pw matches test or guest or if targetId is valid demo account
-    if (!targetId && (rawPw === "test" || rawPw === "guest")) {
-      targetId = rawPw;
-    }
-
-    if (!targetId) {
-      errBanner.innerHTML = "<span>IDまたはパスワードが正しくありません。</span>";
-      errBanner.classList.remove("hidden");
-      return;
     }
     const id = targetId;
 

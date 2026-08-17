@@ -314,6 +314,15 @@
 <!-- Toast -->
 <div id="toast" class="toast hidden"></div>
 
-<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+      for(let registration of registrations) {
+        registration.unregister();
+      }
+    });
+  }
+</script>
+<script src="app.js?v=20260817999"></script>
 </body>
 </html>
