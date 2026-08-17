@@ -275,29 +275,35 @@ function initMyPage() {
 
   // PayPay Actions
   const paypayActions = [
-    { id: "menu-paypay-charge", label: "チャージ", type: "charge" },
-    { id: "menu-paypay-withdraw", label: "出金", type: "withdraw" }
+    { id: "menu-paypay-charge", label: "PayPayチャージ", type: "charge" },
+    { id: "menu-paypay-withdraw", label: "PayPay出金", type: "withdraw" }
   ];
 
   paypayActions.forEach(action => {
-      document.getElementById(action.id)?.addEventListener("click", async () => {
-          const s = getState(); if(!s.isPayPayLinked) { showToast("PayPay連携が必要です"); return; }
-          const amt = parseInt(prompt(`${action.label}金額を入力してください`, "1000"));
-          if (!amt || amt <= 0) return;
+      document.getElementById(action.id)?.addEventListener("click", () => {
+          const s = getState();
+          if (s.isPayPayLinked === undefined) s.isPayPayLinked = true;
+          if (!s.paypayBalance && s.paypayBalance !== 0) s.paypayBalance = 20000;
 
-          await atomicUpdate(map => {
-              const user = map[currentUserId];
-              if (action.type === "charge") {
-                  if (amt > user.balance) { alert("銀行残高不足"); return; }
-                  user.balance -= amt; user.paypayBalance += amt;
-                  user.transactions.unshift({ id: "tx_"+uuid(), date: today(), description: "PayPayチャージ", amount: amt, type: "withdrawal" });
-              } else {
-                  if (amt > user.paypayBalance) { alert("PayPay残高不足"); return; }
-                  user.balance += amt; user.paypayBalance -= amt;
-                  user.transactions.unshift({ id: "tx_"+uuid(), date: today(), description: "PayPay出金", amount: amt, type: "deposit" });
-              }
-              showToast(`${fmt(amt)} ${action.label}しました`);
-          });
+          const inputStr = prompt(`${action.label}の金額を入力してください（円）`, "5000");
+          if (!inputStr) return;
+          const amt = parseInt(inputStr, 10);
+          if (isNaN(amt) || amt <= 0) { alert("有効な金額を入力してください。"); return; }
+
+          const info = s.accountInfo || s;
+          if (action.type === "charge") {
+              if (amt > info.balance) { alert("口座残高が不足しています。"); return; }
+              info.balance -= amt;
+              s.paypayBalance = (s.paypayBalance || 0) + amt;
+              s.transactions.unshift({ id: "tx_" + uuid(), date: today(), description: "PayPayチャージ", amount: amt, type: "withdrawal" });
+          } else {
+              if (amt > (s.paypayBalance || 0)) { alert("PayPay残高が不足しています。"); return; }
+              info.balance += amt;
+              s.paypayBalance = (s.paypayBalance || 0) - amt;
+              s.transactions.unshift({ id: "tx_" + uuid(), date: today(), description: "PayPay出金", amount: amt, type: "deposit" });
+          }
+          renderMyPage();
+          showToast(`${fmt(amt)} を${action.label}しました`);
       });
   });
 }
