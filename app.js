@@ -60,7 +60,7 @@ async function fetchServerState() {
             "Authorization": `token ${token}`,
             "Accept": "application/vnd.github.v3+json",
             "User-Agent": "DummyBankWebApp",
-            "Cache-Control": "no-cache"
+            
         }
     });
     if (!res.ok) {
@@ -82,7 +82,7 @@ async function pushServerState(accounts, retries = 2) {
         headers: {
             "Authorization": `token ${token}`,
             "User-Agent": "DummyBankWebApp",
-            "Cache-Control": "no-cache"
+            
         }
     });
     const metadata = await getRes.json();
@@ -162,18 +162,73 @@ function getState() { return DUMMY_DATA.accounts[currentUserId]; }
 
 // ---- LOGIN ----
 function initLogin() {
-  document.getElementById("btn-login").onclick = async () => {
-    const id = document.getElementById("login-userid").value.trim().toLowerCase();
+  const userInput = document.getElementById("login-userid");
+  const pwInput = document.getElementById("login-password");
+  const errBanner = document.getElementById("login-error");
+  const togglePw = document.getElementById("toggle-pw");
+
+  if (togglePw) {
+    togglePw.onclick = () => {
+      if (pwInput.type === "password") {
+        pwInput.type = "text"; togglePw.textContent = "🙈";
+      } else {
+        pwInput.type = "password"; togglePw.textContent = "👁";
+      }
+    };
+  }
+
+  userInput.oninput = () => errBanner.classList.add("hidden");
+  pwInput.oninput = () => errBanner.classList.add("hidden");
+  userInput.onkeydown = e => { if (e.key === "Enter") pwInput.focus(); };
+  pwInput.onkeydown = e => { if (e.key === "Enter") doLogin(); };
+
+  document.getElementById("btn-login").onclick = doLogin;
+
+  async function doLogin() {
+    const id = userInput.value.trim().toLowerCase();
+    const pw = pwInput.value.trim().toLowerCase();
     const btn = document.getElementById("btn-login");
     const originalText = btn.textContent;
+
+    errBanner.classList.add("hidden");
+
+    // Check credentials (test/test or guest/guest)
+    if (!((id === "test" && pw === "test") || (id === "guest" && pw === "guest"))) {
+      errBanner.innerHTML = "<span>IDまたはパスワードが正しくありません。</span>";
+      errBanner.classList.remove("hidden");
+      return;
+    }
+
     btn.disabled = true; btn.textContent = "同期中...";
-    const accounts = await fetchServerState();
+    let accounts = null;
+    try {
+      accounts = await fetchServerState();
+    } catch (e) {
+      console.warn("Server sync failed, using default state", e);
+    }
     btn.disabled = false; btn.textContent = originalText;
+
     if (accounts && accounts[id]) {
-      DUMMY_DATA.accounts = accounts; currentUserId = id;
-      renderMyPage(); showScreen("mypage"); startPolling();
-    } else { document.getElementById("login-error").classList.remove("hidden"); }
-  };
+      DUMMY_DATA.accounts = accounts;
+    } else if (!DUMMY_DATA.accounts[id]) {
+      // Restore default demo account if missing
+      DUMMY_DATA.accounts[id] = {
+        accountInfo: {
+          bankCode: "001", branchCode: id === "test" ? "001" : "002",
+          accountNumber: id === "test" ? "123-4567-890" : "0987654321",
+          balance: id === "test" ? 1284500 : 500000,
+          ownerName: id === "test" ? "テスト タロウ" : "ゲスト ジロウ"
+        },
+        transactions: [],
+        savingsAccounts: []
+      };
+    }
+
+    currentUserId = id;
+    renderMyPage();
+    showScreen("mypage");
+    try { startPolling(); } catch (e) {}
+  }
 }
 
 // ---- PAGES ----
